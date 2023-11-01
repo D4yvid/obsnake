@@ -1,0 +1,11 @@
+{
+  "id": "test",
+  "name": "Test Plugin",
+  "version": "1.0-devel",
+  "minAppVersion": "0.15.0",
+  "description": "Test obsidian plugin",
+  "author": "Dayvid",
+  "authorUrl": "http://example.com",
+  "fundingUrl": "http://example.com",
+  "isDesktopOnly": false 
+}
