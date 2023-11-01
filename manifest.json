@@ -1,11 +1,10 @@
 {
-  "id": "test",
-  "name": "Test Plugin",
+  "id": "snake-plugin",
+  "name": "Snake Plugin",
   "version": "1.0-devel",
   "minAppVersion": "0.15.0",
-  "description": "Test obsidian plugin",
+  "description": "Play snake inside obsidian",
   "author": "Dayvid",
-  "authorUrl": "http://example.com",
-  "fundingUrl": "http://example.com",
+  "authorUrl": "https://github.com/D4yvid",
   "isDesktopOnly": false 
 }

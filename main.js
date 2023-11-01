@@ -1,76 +1,139 @@
-const { Plugin, View, WorkspaceLeaf } = require('obsidian');
-
-const updateCalbacks = [];
+const { Plugin, View, WorkspaceLeaf, Notice } = require('obsidian');
 
 /**
- * @param {Plugin} plugin
+ * @type {{start:()=>void,stop:()=>void,onKeyDown:(event:KeyboardEvent)=>void,tick:()=>void}[]} games
  */
-async function playTetrisCommand(plugin) {
-  let leaves = plugin.app.workspace.getLeavesOfType(TETRIS_VIEW);
-  let leaf = null;
+const games = [];
 
-  if (leaves.length > 0) {
-    leaf = leaves[0];
-  } else {
-    leaf = plugin.app.workspace.getLeaf(true);
+const SNAKE_VIEW = 'SnakeView';
+const TILE_SIZE = 32;
 
-    await leaf.setViewState({ type: TETRIS_VIEW, active: true });
-  }
+/**
+ * @param {HTMLCanvasElement} canvas
+ */
+function createGame(canvas) {
+	const ctx = canvas.getContext('2d');
 
-  plugin.app.workspace.revealLeaf(leaf);
-}
+	const width = canvas.width;
+	const height = canvas.height;
 
-class TetrisPlugin extends Plugin {
+	const UP = { x: 0, y: -1 };
+	const DOWN = { x: 0, y: 1 };
+	const LEFT = { x: -1, y: 0 };
+	const RIGHT = { x: 1, y: 0 };
 
-  async onload() {
-    this.registerView(
-      TETRIS_VIEW,
-      (leaf) => new TetrisView(leaf, this)
-    );
+	const tilesWidth = Math.floor(width / TILE_SIZE);
+	const tilesHeight = Math.floor(height / TILE_SIZE);
 
-    this.addCommand({
-      id: 'play-tetris',
-      name: 'Play tetris',
-      callback: async () => await playTetrisCommand(this)
-    });
+	let running = false;
 
-    this.registerInterval(setInterval(() => this.update(), 1000 / 30));
-  }
+	let snake = {
+		dx: 1,
+		dy: 0,
+		x: 0,
+		y: 0,
+		size: 3,
 
-  update() {
-    for (const callback of updateCalbacks) {
-      callback.execute(callback, this);
-    }
-  }
+		/** @type {{x:number,y:number}[]} tail */
+		tail: []
+	};
 
-}
+	let apple = generateApple();
 
-class TetrisGame {
+	function generateApple() {
+		return {
+			x: Math.floor(Math.random() * tilesWidth),
+			y: Math.floor(Math.random() * tilesHeight)
+		}
+	}
+
+	function move(direction) {
+		if (snake.dx == -direction.x || snake.dy == -direction.y) {
+			return;
+		}
+
+		snake.dx = direction.x;
+		snake.dy = direction.y;
+	}
+
+	function start() {
+		running = true;
+	}
+
+	function stop() {
+		running = false;
+	}
+
+	function update() {
+		snake.x += snake.dx;
+		snake.y += snake.dy;
+
+		if (snake.x >= tilesWidth) {
+			snake.x = 0;
+		} else if (snake.x < 0) {
+			snake.x = tilesWidth - 1;
+		}
+
+		if (snake.y > tilesHeight) {
+			snake.y = 0;
+		} else if (snake.y < 0) {
+			snake.y = tilesHeight;
+		}
+
+		if (snake.x == apple.x && snake.y == apple.y) {
+			snake.size++;
+			apple = generateApple();
+		}
+
+		let head = { x: snake.x, y: snake.y };
+
+		snake.tail.push(head);
+
+		while (snake.tail.length > snake.size)
+			snake.tail.shift();
+	}
+
+	function render() {
+		ctx.fillStyle = 'black';
+		ctx.fillRect(0, 0, width, height);
+
+		ctx.fillStyle = 'red';
+		ctx.fillRect(apple.x * TILE_SIZE, apple.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+
+		for (const tail of snake.tail) {
+			ctx.fillStyle = 'green';
+
+			ctx.fillRect(tail.x * TILE_SIZE, tail.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+		}
+	}
 
 	/**
-		* @param {CanvasRenderingContext2D} ctx
-		*/
-	constructor(ctx, width, height) {
-		this.ctx = ctx;
-
-		this.width = width;
-		this.height = height;
-
-		this.x = 0;
-		this.y = 0;
+	 * @param {KeyboardEvent} event
+	 */
+	function onKeyDown(event) {
+		switch (event.key) {
+			case 'ArrowUp': move(UP); break;
+			case 'ArrowDown': move(DOWN); break;
+			case 'ArrowLeft': move(LEFT); break;
+			case 'ArrowRight': move(RIGHT); break;
+		}
 	}
 
-	update() {
+	function tick() {
+		if (!running) {
+			games.remove(this);
+			return;
+		}
+
+		update();
+		render();
 	}
 
-	render() {
-	}
-
+	return { start, stop, onKeyDown, tick };
 }
 
-const TETRIS_VIEW = 'TetrisView';
 
-class TetrisView extends View {
+class SnakeView extends View {
 
   /**
    * @param {Plugin} plugin
@@ -80,50 +143,85 @@ class TetrisView extends View {
     super(leaf);
 
     this.plugin = plugin;
+		this.gameInstance = null;
   }
 
   getDisplayText() {
-    return "Tetris";
+    return "Snake Game";
   }
 
   getViewType() {
-    return TETRIS_VIEW;
+    return SNAKE_VIEW;
   }
 
   async onOpen() {
-		const canvas = this.containerEl.createEl('canvas');
-		const ctx = canvas.getContext('2d');
+		try {
+			const width  = this.containerEl.parentElement.parentElement.offsetWidth;
+			const height = this.containerEl.parentElement.parentElement.offsetHeight;
 
-		const width = canvas.width = window.innerWidth;
-		const height = canvas.height = window.innerHeight;
+			const canvas = this.containerEl.createEl('canvas');
 
-		let x = 0, y = 0;
+			canvas.width = width;
+			canvas.height = height;
 
-		updateCalbacks.push({
-			execute(self, plugin) {
-				y += 10;
+			this.containerEl.appendChild(canvas);
 
-				if (y >= (height - 10)) {
-					y = 0;
-					x += 10;
-				}
+			games.push(this.gameInstance = createGame(canvas));
 
-				x = x % width;
-
-				ctx.fillStyle = 'black';
-				ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-				ctx.fillStyle = 'white';
-				ctx.fillRect(x, y, 10, 10);
-			}
-		});
-
-		this.containerEl.appendChild(canvas);
+			this.gameInstance.start();
+		} catch (error) {
+			new Notice('Error: ' + error);
+		}
   }
 
   async onClose() {
+		this.gameInstance.stop();
   }
 
 }
 
-module.exports = TetrisPlugin;
+module.exports = class SnakePlugin extends Plugin {
+
+  async onload() {
+    this.registerView(...this.snakeView());
+    this.addCommand(this.snakeCommand());
+
+		this.registerInterval(setInterval(() => {
+			for (const game of games) {
+				game.tick();
+			}
+		}, 1000 / 12));
+
+		this.registerDomEvent(window, 'keydown', (keydown) => {
+			for (const game of games) {
+				game.onKeyDown(keydown);
+			}
+		});
+  }
+
+	snakeView = () => [
+		SNAKE_VIEW,
+		(leaf) => new SnakeView(leaf, this)
+	];
+
+	snakeCommand = () => ({
+		id: 'play-snake',
+		name: 'Play Snake',
+
+		callback: async () => {
+			let leaves = this.app.workspace.getLeavesOfType(SNAKE_VIEW);
+			let leaf = null;
+
+			if (leaves.length > 0) {
+				leaf = leaves[0];
+			} else {
+				leaf = this.app.workspace.getLeaf(true);
+
+				await leaf.setViewState({ type: SNAKE_VIEW, active: true });
+			}
+
+			this.app.workspace.revealLeaf(leaf);
+		}
+	});
+
+}
